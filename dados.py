@@ -3,43 +3,53 @@
 #Versión actual no estable 0.5.5
 
 #Importamos las clases correspondientes. También importamos el archivo auth.py, que es donde está la autenticación de mis bots
+#from telegram import ReplyKeyboardMarkup, KeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler
 from auth import token2
 import logging
 import random
-import pickle
+from telegram.ext import CallbackQueryHandler
+#import pickle
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger('KirikiVBot')
-
+FIRST, SECOND, THIRD = range(3)
 #clase partida, que creará una partida.
 #contiene el código de la partida, una lista de los jugadores, los dos dados, el turno en el que estamos y la última tirada
 
 class partida:
     codigo = ''
     jugadores = []
+    #los dados pueden llegar a sobrar, estoy por quitarlos
     dado1 = 1
     dado2 = 1
     turno = 0
-    ultimatirada = "verdad"
+    ultimatirada = 0
+    id_chat = ''
+    respuesta = 0
     #Método constructor de partida
-    def __init__(self, cod, jug):
+    def __init__(self, cod, jug, chat_id):
         self.codigo = cod
         self.jugadores = jug
         self.dado1 = 1
         self.dado2 = 1
         self.turno = 0
-        self.ultimatirada = "verdad"
+        self.ultimatirada = 0
+        self.id_chat = chat_id
+        self.respuesta = 0
 #Clase jugador, que define los atributos del mismo.
 #Contiene el nombre del jugador, su id (idaso) y su puntuación
 class jugador:
     nombre = ''
     idaso = ''
     puntos = 3
+    actualpartida = 0
     #Método constructor de jugador
     def __init__(self, nombre, idaso):
         self.nombre = nombre
         self.idaso = idaso
         self.puntos = 3
+        self.actualpartida = 0
 
 #lista de partidas. Aquí se almacenarán todas las partidas
 partidas = []
@@ -56,7 +66,7 @@ def crearpartida (bot,update):
         cod=str(random.randint(0,9))+str(random.randint(0,9))+str(random.randint(0,9))
         #creamos un objeto partida. En caso de que sea una partida repetida, se machacará el mismo.
         jug = []
-        partidanueva = partida(cod, jug)
+        partidanueva = partida(cod, jug, update.message.chat_id)
         #Llamamos a la lista global de partida
         global partidas
         #con un bucle for each, recorremos la lista de partidas.
@@ -68,7 +78,7 @@ def crearpartida (bot,update):
             )
             bot.send_message(
                 chat_id=update.message.chat_id,
-                text="Jugadores, id uniendose con el comando (join nombre id codigo_partida)\n Podéis obtener vuestro id de este bot: https://web.telegram.org/#/im?p=@userinfobot "
+                text="Jugadores, id uniendose con el comando (join codigo_partida)\n"
             )
             correcto = False
         else:
@@ -97,6 +107,29 @@ def crearpartida (bot,update):
                     )
                     correcto = False
 
+def jugadorexiste(bot,update,partida):
+    global partidas
+    for i in range(len(partidas)):
+        if partidas[i].codigo == partida:
+            if len(partidas[i].jugadores) == 0:
+                resultado = False
+                return resultado
+                break
+            else:
+                for e in range(len(partidas[i].jugadores)):
+                    if partidas[i].jugadores[e].idaso == update.message.from_user.id:
+                        bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text="Ya estabas unido a esa partida con anterioridad."
+                        )
+                        resultado = True
+                        return resultado
+                        break
+                    resultado = False
+                    return resultado
+                    break
+
+
 #Método mostrar partidas
 def mostrarpartidas(bot,update):
     logger.info('He recibido un comando mostrarpartidas')
@@ -115,32 +148,41 @@ def mostrarpartidas(bot,update):
 #Método join, que unirá a los jugadores a la partida seleccionada
 def join (bot,update,args):
     global partidas
-    #Creamos el objeto pj con los argumentos recibidos
-    pj = jugador(args[0], update.message.from_user.id)
+    #Creamos el objeto pj con el argumento update
+    pj = jugador(update.message.from_user.first_name, update.message.from_user.id)
     logger.info('He recibido un comando join')
     #Si no hay partidas, la partida no existe
     if len(partidas)==0:
         bot.send_message(
             chat_id=update.message.chat_id,
-            text="No existe ninguna partida con el código " + args[2]
+            text="No existe ninguna partida con el código " + args[0]
         )
     else:
         anadido = 0
         #Recorremos la lista para comprobar que la partida existe y añadimos al jugador.
         for i in range(len(partidas)):
-            if args[1]==partidas[i].codigo:
-                partidas[i].jugadores.append(pj)
-                bot.send_message(
-                        chat_id=update.message.chat_id,
-                        text="Jugador " + args[0] + " añadido a la partida " + args[1]+"\nPara tirar los dados usa el comando (tirardados codigo_partida)\nEjemplo: tirardados 123"
-                    )
-                anadido = 1
+            if args[0]==partidas[i].codigo:
+                existe = jugadorexiste(bot,update,args[0])
+                if (existe == False):
+                    logger.info('Jugador existe devuelve false.')
+                    partidas[i].jugadores.append(pj)
+                    bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text="Jugador " + update.message.from_user.first_name + " añadido a la partida " + args[0]+"\nPara tirar los dados usa el comando (tirardados codigo_partida)\nEjemplo: tirardados 123"
+                        )
+                    for e in range (len(partidas[i].jugadores)):
+                        if partidas[i].jugadores[e].idaso == update.message.from_user.id:
+                            partidas[i].jugadores[e].actualpartida = args[0]
+                    anadido = 1
+                    break
+                else:
+                    anadido = 1
         #Si la partida no existe, avisamos al jugador
         if anadido == 0:
             bot.send_message(
-                chat_id=update.message.chat_id,
-                text="No existe ninguna partida con el código " + args[1]
-            )
+               chat_id=update.message.chat_id,
+               text="No existe ninguna partida con el código " + args[0]
+           )
 
 #Método para quitarle un punto a un jugador. Este método no será visible por el usuario.
 def quitarpunto(partida,nombre):
@@ -150,16 +192,17 @@ def quitarpunto(partida,nombre):
             partidas[partida].jugadores[i].puntos = partidas[partida].jugadores[i].puntos - 1
 
 #Método para mostrar los puntos de la partida. Recibe como argumento el código de la partida
-def mostrarpuntos(bot,update, args):
+def mostrarpuntos(bot,update):
     global partidas
     logger.info('He recibido un comando mostrarpuntos')
     for i in range(len(partidas)):
-        if args[0]==partidas[i].codigo:
-            for e in range(len(partidas[i].jugadores)):
-                bot.send_message(
-                    chat_id=update.message.chat_id,
-                    text= partidas[i].jugadores[e].nombre+": "+str(partidas[i].jugadores[e].puntos)
-                )
+        for e in range (len(partidas[i].jugadores)):
+            if partidas[i].jugadores[e].actualpartida == partidas[i].codigo:
+                for e in range(len(partidas[i].jugadores)):
+                    bot.send_message(
+                        chat_id=update.message.chat_id,
+                        text= partidas[i].jugadores[e].nombre+": "+str(partidas[i].jugadores[e].puntos)
+                    )
 
 #Método de bienvenida
 def start(bot, update):
@@ -170,54 +213,167 @@ def start(bot, update):
     )
 
 #Método para tirar dados. Deberás indicar tu nombre y el número de la partida
-def tirardados(bot,update,args):
+def tirardados(bot,update):
     logger.info('He recibido un comando tirardados')
     global partidas
+    tiradabuena = 0
     for i in range(len(partidas)):
-        if args[0]==partidas[i].codigo:
-            partidas[i].dado1=random.randint(1,6)
-            partidas[i].dado2=random.randint(1,6)
+        if update.message.chat_id == partidas[i].id_chat:
             for e in range(len(partidas[i].jugadores)):
-                if e == partidas[i].turno:
-                    #logger.info(partida[i].jugadores[e].idaso Esto está aquí para descomentarlo por si el código da fallo, para verlo en la terminal.
-                    if partidas[i].dado1 == 1:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('1.png', 'rb'))
-                    elif partidas[i].dado1 == 2:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('2.png', 'rb'))
-                    elif partidas[i].dado1 == 3:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('3.png', 'rb'))
-                    elif partidas[i].dado1 == 4:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('4.png', 'rb'))
-                    elif partidas[i].dado1 == 5:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('5.png', 'rb'))
-                    elif partidas[i].dado1 == 6:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('6.png', 'rb'))
+                if partidas[i].jugadores[e].idaso == update.message.from_user.id:
+                    if e == partidas[i].turno:
+                        dado1=random.randint(1,6)
+                        dado2=random.randint(1,6)
+                        #logger.info(partida[i].jugadores[e].idaso Esto está aquí para descomentarlo por si el código da fallo, para verlo en la terminal.
+                        if dado1 == 1:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('1.png', 'rb'))
+                        elif dado1 == 2:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('2.png', 'rb'))
+                        elif dado1 == 3:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('3.png', 'rb'))
+                        elif dado1 == 4:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('4.png', 'rb'))
+                        elif dado1 == 5:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('5.png', 'rb'))
+                        elif dado1 == 6:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('6.png', 'rb'))
 
-                    if partidas[i].dado2 == 1:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('1.png', 'rb'))
-                    elif partidas[i].dado2 == 2:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('2.png', 'rb'))
-                    elif partidas[i].dado2 == 3:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('3.png', 'rb'))
-                    elif partidas[i].dado2 == 4:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('4.png', 'rb'))
-                    elif partidas[i].dado2 == 5:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('5.png', 'rb'))
-                    elif partidas[i].dado2 == 6:
-                        bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('6.png', 'rb'))
-                    logger.info(str(partidas[i].turno)+str(len(partidas[i].jugadores)-1))
-                    if partidas[i].turno == len(partidas[i].jugadores)-1:
-                        bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", dile lo que has sacado a "+partidas[i].jugadores[0].nombre + " por el grupo. Usa el comando mentira para mentir y verdad para decir la verdad antes de nada.")
-                    else:
-                        bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", dile lo que has sacado a "+partidas[i].jugadores[e+1].nombre + " por el grupo. Usa el comando mentira para mentir y verdad para decir la verdad antes de nada.")
-                    #No sé para que cipotes era este código, pero no lo borro por si acaso
-                    #bot.send_message(
-                    #    chat_id= update.message.chat_id,
-                    #    text=partida[i].jugadores[e+1].nombre + ", "+partida[i].jugadores[e].nombre + " va a decirte lo que ha sacado por el grupo. Puedes levantar si crees que miente."
-                    #)
+                        if dado2 == 1:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('1.png', 'rb'))
+                        elif dado2 == 2:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('2.png', 'rb'))
+                        elif dado2 == 3:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('3.png', 'rb'))
+                        elif dado2 == 4:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('4.png', 'rb'))
+                        elif dado2 == 5:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('5.png', 'rb'))
+                        elif dado2 == 6:
+                            bot.send_sticker(chat_id=partidas[i].jugadores[e].idaso, sticker=open('6.png', 'rb'))
+                        tirada = dado1 + dado2
+                        if dado1 == dado2:
+                            partidas[i].ultimatirada = 12
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado PAREJA")
+                        elif tirada == 3:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado KIRIKI. Tú ganas.")
+                            partidas[i].ultimatirada = 13
+                        elif tirada == 4:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 4.")
+                            partidas[i].ultimatirada = 4
+                        elif tirada == 5:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 5.")
+                            partidas[i].ultimatirada = 5
+                        elif tirada == 6:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 6.")
+                            partidas[i].ultimatirada = 6
+                        elif tirada == 7:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 7.")
+                            partidas[i].ultimatirada = 7
+                        elif tirada == 8:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 8.")
+                            partidas[i].ultimatirada = 8
+                        elif tirada == 9:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 9.")
+                            partidas[i].ultimatirada = 9
+                        elif tirada == 10:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado un 10.")
+                            partidas[i].ultimatirada = 10
+                        elif tirada == 11:
+                            bot.send_message(chat_id=partidas[i].jugadores[e].idaso, text=partidas[i].jugadores[e].nombre + ", has sacado LADRILLO.")
+                            partidas[i].ultimatirada = 11
+                        tiradabuena == 1
+                        logger.info(str(partidas[i].turno)+str(len(partidas[i].jugadores)-1))
+                        keyboard = [[InlineKeyboardButton("Pareja", callback_data='9')], [InlineKeyboardButton("Ladrillo", callback_data='8')], [InlineKeyboardButton("10", callback_data='7')],
+                        [InlineKeyboardButton("9", callback_data='6')], [InlineKeyboardButton("8", callback_data='5')], [InlineKeyboardButton("7", callback_data='4')],
+                        [InlineKeyboardButton("6", callback_data='3')], [InlineKeyboardButton("5", callback_data='2')], [InlineKeyboardButton("4", callback_data='1')], ]
+                        reply_markup=InlineKeyboardMarkup(keyboard, one_time_keyboard=True)
+                        bot.send_message(chat_id=update.message.chat_id, text='Selecciona lo que has sacado o MIENTE si es necesario.', reply_markup=reply_markup)
+        break
+def tirardados2(bot,update):
+    global partidas
+    print('tuputamadre')
+    for i in range (len(partidas)):
+        for e in range (len(partidas[i].jugadores)):
+            if partidas[i].jugadores[e].idaso == update.callback_query.from_user.id and partidas[i].codigo == partidas[i].jugadores[e].actualpartida:
+                query = update.callback_query
+                logger.info('TELEGRAM query data: "%s" type: "%s"' % (
+                    str(query.data), str(type(query.data))))
+                if query.data == '1':
+                    partidas[i].respuesta = 4
+                    print("entrada\n")
+                elif query.data == '2':
+                    partidas[i].respuesta = 5
+                    print("entrada el fallo\n")
+                elif query.data == '3':
+                    partidas[i].respuesta = 6
+                    print("entrada\n")
+                elif query.data == '4':
+                    partidas[i].respuesta = 7
+                    print("entrada\n")
+                elif query.data == '5':
+                    partidas[i].respuesta = 8
+                    print("entrada\n")
+                elif query.data == '6':
+                    partidas[i].respuesta = 9
+                    print("entrada\n")
+                elif query.data == '7':
+                    partidas[i].respuesta = 10
+                    print("entrada\n")
+                elif query.data == '8':
+                    partidas[i].respuesta = 11
+                    print("entrada\n")
+                elif query.data == '9':
+                    partidas[i].respuesta = 12
+
+                if e == partidas[i].turno:
+                    bot.edit_message_text(text='Seleccion realizada. '+partidas[i].jugadores[0].nombre+", te toca /levantar o /pasar",
+                    chat_id=query.message.chat_id,
+                    message_id=query.message.message_id)
+                    partidas[i].turno = 0
+                else:
+                    bot.edit_message_text(text='Seleccion realizada. '+partidas[i].jugadores[e+1].nombre+", te toca /levantar o /pasar",
+                    chat_id=query.message.chat_id,
+                    message_id=query.message.message_id)
+                    partidas[i].turno = partidas[i].turno + 1
+
+                ##Aquí se debe llamar al método de jugada
+
+
+#Esto era levantar o pasar con teclado, pero por problemas técnicos no he podido hacerlo.
+
+'''
+def jugada(bot,update):
+    query = update.callback_query
+    keyboard2 = [[InlineKeyboardButton("/levantar", callback_data='15')],
+                                [InlineKeyboardButton("/pasar", callback_data='16')]]
+    reply_markup=InlineKeyboardMarkup(keyboard2, one_time_keyboard=True)
+    bot.send_message(chat_id=query.message.chat_id, text='¿Levantas o pasas?', reply_markup=reply_markup)
+
+
+def jugada2(bot,update):
+    global partidas
+    print('jugadad2')
+    for i in range (len(partidas)):
+        for e in range (len(partidas[i].jugadores)):
+            if partidas[i].jugadores[e].idaso == update.message.from_user.id and partidas[i].codigo == partidas[i].jugadores[e].actualpartida:
+                query = update.callback_query
+                logger.info('TELEGRAM query data: "%s" type: "%s"' % (
+                    str(query.data), str(type(query.data))))
+                if query.data == '15':
+                    bot.edit_message_text(text='Levantando.',
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id)
+                    levantar(bot,update)
+                elif query.data == '16':
+                    bot.edit_message_text(text='Pasando.',
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id)
+                    pasar(bot,update)
+
+'''
 
 #Comando pasar. Pasa el turno sin que ocurra nada.
-def pasar(bot,update,args):
+def pasar(bot,update):
     logger.info('He recibido un comando pasar')
     for i in range(len(partidas)):
         if partidas[i].codigo == args[0]:
@@ -233,121 +389,63 @@ def pasar(bot,update,args):
                         chat_id=update.message.chat_id,
                         text="Has pasado sin levantar. Te toca a ti. Usa el comando tirardados"
                     )
-#Comando verdad. Se almacena en ultimatirada que la última tirada ha sido verdad
-def verdad(bot,update,args):
-    logger.info('He recibido un comando verdad')
-    for i in range(len(partidas)):
-        if partidas[i].codigo == args[0]:
-            partidas[i].ultimatirada = "verdad"
-            bot.send_message(
-                chat_id=update.message.chat_id,
-                text="Has dicho la verdad. Di en el grupo el número que has sacado, y dile a tu oponente que tiene que usar el comando levantar o pasar."
-            )
 
-#Comando mentira. Se almacena en ultimatirada si la última tirada ha sido mentira
-def mentira(bot,update,args):
-    logger.info('He recibido un comando mentira')
-    for i in range(len(partidas)):
-        if partidas[i].codigo == args[0]:
-            partidas[i].ultimatirada = "mentira"
-            bot.send_message(
-                chat_id=update.message.chat_id,
-                text="Has mentido. Di en el grupo la mentira que quieras decir, y dile a tu oponente que tiene que usar el comando levantar o pasar."
-            )
-def cargar(bot,update):
-    global partidas
-    try:
-        with open("obj.pickle", "rb") as f:
-            i = 0
-            obj = pickle.load(f)
-            partidas[i] = obj
-            i = i+1
-        bot.send_message(
-                chat_id=update.message.chat_id,
-                text="Fichero de partidas cargado."
-            )
-    except:
-        bot.send_message(
-                chat_id=update.message.chat_id,
-                text="Fichero de partidas vacío."
-            )
 
-def guardar(bot,update):
-    global partidas
-    #f = open ("partidaskiriki.txt","a") intento de leer fichero.
-    with open("obj.pickle", "wb") as f:
-        pickle.dump(partidas, f)
-    f.close
-    bot.send_message(
-                chat_id=update.message.chat_id,
-                text="Partidas guardadas en el fichero.."
-            )
 #Comando levantar. Levanta la última tirada, comprueba la misma en el objeto partida y detecta si es mentira o verdad, quitando el punto correspondiente.
 #Este método es un cacao. Consecuencias de que no tener el switch en python :D
-def levantar(bot,update,args):
+def levantar(bot,update):
     logger.info('He recibido un comando levantar')
     for i in range(len(partidas)):
-        if partidas[i].ultimatirada == "verdad":
-            for e in range(len(partidas[i].jugadores)):
-                if e == partidas[i].turno:
-                    if partidas[i].turno == len(partidas[i].jugadores)-1:
-                        partidas[i].jugadores[0].puntos = (partidas[i].jugadores[0].puntos)-1
+        for e in range(len(partidas[i].jugadores)):
+            if partidas[i].jugadores[e].idaso == update.message.from_user.id and partidas[i].turno == e:
+                #por si el jugador es el último en jugar
+                if partidas[i].turno == len(partidas[i].jugadores):
+                    if partidas[i].ultimatirada == partidas[i].respuesta:
                         bot.send_message(
                             chat_id=update.message.chat_id,
-                            text="El jugador "+partidas[i].jugadores[e].nombre + " ha perdido un punto por levantar una verdad. Le queda: "+ str(partidas[i].jugadores[e].puntos)
+                            text="Has levantado una verdad. Pierdes un punto, " + partidas[i].jugadores[0].nombre
                         )
-                        partidas[i].turno = (partidas[i].turno)+1
-                        if partidas[i].jugadores[e].puntos == 0:
-                            bot.send_message(
-                                chat_id=update.message.chat_id,
-                                text="El jugador "+partidas[i].jugadores[0].nombre + " ha sido derrotado. Quedas eliminado."
-                            )
-                        del partidas[i].jugadores[0]
-                        break
+                        partidas[i].jugadores[e].puntos = partidas[i].jugadores[0].puntos - 1
                     else:
-                        partidas[i].jugadores[e+1].puntos = (partidas[i].jugadores[e+1].puntos)-1
                         bot.send_message(
                             chat_id=update.message.chat_id,
-                            text="El jugador "+partidas[i].jugadores[e+1].nombre + " ha perdido un punto por levantar una verdad. Le queda: "+ str(partidas[i].jugadores[e+1].puntos)
+                            text="Has levantado una mentira. " + partidas[i].jugadores[e].nombre + " pierde un punto"
                         )
-                        partidas[i].turno = (partidas[i].turno)+1
-                        if partidas[i].jugadores[e+1].puntos == 0:
-                            bot.send_message(
-                                chat_id=update.message.chat_id,
-                                text="El jugador "+partidas[i].jugadores[e+1].nombre + " ha sido derrotado. Quedas eliminado."
-                            )
-                        del partidas[i].jugadores[e+1]
-                        break
-
-        else:
-            for e in range(len(partidas[i].jugadores)):
-                if e == partidas[i].turno:
-
-                    if partidas[i].turno == len(partidas[i].jugadores)-1:
-                        partidas[i].jugadores[e].puntos = (partidas[i].jugadores[e].puntos)-1
-                        logger.info('Se ejecuta 1')
+                        partidas[i].jugadores[e].puntos = partidas[i].jugadores[e].puntos - 1
+                    if partidas[i].jugadores[e].puntos == 0:
                         bot.send_message(
                             chat_id=update.message.chat_id,
-                            text="El jugador "+partidas[i].jugadores[e].nombre + " ha perdido un punto por mentir. Le queda: "+ str(partidas[i].jugadores[e].puntos)
+                            text= partidas[i].jugadores[e].nombre + " ha perdido."
                         )
-                        partidas[i].turno = 0
-                        break
+                    elif partidas[i].jugadores[e-1].puntos == 0:
+                        bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text= partidas[i].jugadores[e-1].nombre + " ha perdido."
+                        )
+                else:
+                    if partidas[i].ultimatirada == partidas[i].respuesta:
+                        bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text="Has levantado una verdad. Pierdes un punto, " + partidas[i].jugadores[e+1].nombre
+                        )
+                        partidas[i].jugadores[e].puntos = partidas[i].jugadores[e+1].puntos - 1
+
                     else:
-                        partidas[i].jugadores[e].puntos = (partidas[i].jugadores[e].puntos)-1
-                        logger.info('Se ejecuta 2')
                         bot.send_message(
                             chat_id=update.message.chat_id,
-                            text="El jugador "+partidas[i].jugadores[e].nombre + " ha perdido un punto por mentir. Le queda: "+ str(partidas[i].jugadores[e].puntos)
+                            text="Has levantado una mentira. " + partidas[i].jugadores[e].nombre + " pierde un punto"
                         )
-                        partidas[i].turno = (partidas[i].turno) + 1
-                        if partidas[i].jugadores[e].puntos == 0:
-                            bot.send_message(
-                                chat_id=update.message.chat_id,
-                                text="El jugador "+partidas[i].jugadores[e].nombre + " ha sido derrotado. Quedas eliminado."
-                            )
-                            del partidas[i].jugadores[e-1]
-                            partidas[i].turno = (partidas[i].turno)+1
-                        break
+                        partidas[i].jugadores[e].puntos = partidas[i].jugadores[e].puntos - 1
+                    if partidas[i].jugadores[e].puntos == 0:
+                        bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text= partidas[i].jugadores[e].nombre + " ha perdido."
+                        )
+                    elif partidas[i].jugadores[e].puntos == 0:
+                        bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text= partidas[i].jugadores[e].nombre + " ha perdido."
+                        )
 
 #introduciendo tu nombre con este comando, el programa detecta en cuantas partidas estas.
 #Este comando hay que pulirlo un poco. De momento mostraría las partidas donde haya usuarios con el mismo nombre pero con distinto id
@@ -363,16 +461,23 @@ if __name__ == '__main__':
     #dispatcher = updaterTelegram.dispatcher No sé que pollas es esto, pero si está aquí, aunque esté comentado, aquí se queda.
     updaterTelegram = Updater(token = token2, request_kwargs={'read_timeout': 10, 'connect_timeout': 10})
     updaterTelegram.dispatcher.add_handler(CommandHandler('start', start))
-    updaterTelegram.dispatcher.add_handler(CommandHandler('levantar', levantar, pass_args=True))
-    updaterTelegram.dispatcher.add_handler(CommandHandler('tirardados', tirardados, pass_args=True))
-    updaterTelegram.dispatcher.add_handler(CommandHandler('mostrarpuntos', mostrarpuntos, pass_args=True))
+    updaterTelegram.dispatcher.add_handler(CommandHandler('tirardados', tirardados))
+
+    updaterTelegram.dispatcher.add_handler(CommandHandler('mostrarpuntos', mostrarpuntos))
+    #updaterTelegram.dispatcher.add_handler(CommandHandler('jugada', jugada))
+    '''
+    Tiene que haber algún fallo por aquí, porque cuando entramos en jugada, este carga el callbackquery de los dados.
+    Investigar para la versión 0.7.0 si es posible
+    '''
+
     updaterTelegram.dispatcher.add_handler(CommandHandler('crearpartida', crearpartida))
-    updaterTelegram.dispatcher.add_handler(CommandHandler('guardar', guardar))
     updaterTelegram.dispatcher.add_handler(CommandHandler('join', join, pass_args=True))
     updaterTelegram.dispatcher.add_handler(CommandHandler('mostrarpartidas', mostrarpartidas))
     updaterTelegram.dispatcher.add_handler(CommandHandler('mispartidas', mispartidas, pass_args=True))
-    updaterTelegram.dispatcher.add_handler(CommandHandler('verdad', verdad, pass_args=True))
-    updaterTelegram.dispatcher.add_handler(CommandHandler('mentira', mentira, pass_args=True))
     updaterTelegram.dispatcher.add_handler(CommandHandler('pasar', pasar, pass_args=True))
-    updaterTelegram.start_polling()
+    #updaterTelegram.dispatcher.add_handler(CallbackQueryHandler(jugada2, pattern='jugada'))
+    updaterTelegram.dispatcher.add_handler(CallbackQueryHandler(tirardados2))
+
+
+    updaterTelegram.start_polling(allowed_updates=[])
     updaterTelegram.idle()
