@@ -1,5 +1,8 @@
 # Este código está muy en bruto. Será necesario editarlo para que cada clase esté en su fichero correspondiente, haciendo así el código más legible
-
+'''
+FALLO CATASTRÓFICO.
+SERÁ NECESARIO CREAR UNA LISTA DE JUGADORES GLOBAL, PARA ALMACENAR LA PARTIDA ACTUAL. HABRÁ QUE EDITAR TODO EL CÓDIGO
+'''
 #Versión actual ESTABLE 0.6.0
 
 #Importamos las clases correspondientes. También importamos el archivo auth.py, que es donde está la autenticación de mis bots
@@ -76,10 +79,7 @@ def crearpartida (bot,update):
                 chat_id=update.message.chat_id,
                 text="Partida creada. Código_partida: " + cod
             )
-            bot.send_message(
-                chat_id=update.message.chat_id,
-                text="Jugadores, id uniendose con el comando (join codigo_partida)\n"
-            )
+            break
             correcto = False
         else:
             for i in range(len(partidas)):
@@ -94,14 +94,15 @@ def crearpartida (bot,update):
                         chat_id=update.message.chat_id,
                         text="Ups. La partida no ha podido ser creada. Es probable que los servidores estén llenos. Prueba de nuevo más tarde."
                         )
+                        muchaspartidas=1
                         break
-                else:
-                    partidas.append(partidanueva)
-                    bot.send_message(
-                        chat_id=update.message.chat_id,
-                        text="Partida creada. Código_partida: " + cod
-                    )
-                    correcto = False
+        if bucle < 50:
+            partidas.append(partidanueva)
+            bot.send_message(
+                chat_id=update.message.chat_id,
+                text="Partida creada. Código_partida: " + cod
+            )
+            correcto = False
 
 def jugadorexiste(bot,update,partida):
     global partidas
@@ -193,12 +194,13 @@ def mostrarpuntos(bot,update):
     logger.info('He recibido un comando mostrarpuntos')
     for i in range(len(partidas)):
         for e in range (len(partidas[i].jugadores)):
-            if partidas[i].jugadores[e].actualpartida == partidas[i].codigo:
-                for e in range(len(partidas[i].jugadores)):
-                    bot.send_message(
-                        chat_id=update.message.chat_id,
-                        text= partidas[i].jugadores[e].nombre+": "+str(partidas[i].jugadores[e].puntos)
-                    )
+                if partidas[i].jugadores[e].actualpartida == partidas[i].codigo and partidas[i].jugadores[e].idaso == update.message.from_user.id:
+                    for f in range(len(partidas[i].jugadores)):
+                        bot.send_message(
+                            chat_id=update.message.chat_id,
+                            text= partidas[i].jugadores[f].nombre+": "+str(partidas[i].jugadores[f].puntos)
+                        )
+                    break
                 break
 #Método de bienvenida
 def start(bot, update):
