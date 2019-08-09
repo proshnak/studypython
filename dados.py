@@ -101,10 +101,6 @@ def crearpartida (bot,update):
                         chat_id=update.message.chat_id,
                         text="Partida creada. Código_partida: " + cod
                     )
-                    bot.send_message(
-                        chat_id=update.message.chat_id,
-                        text="Jugadores, id uniendose con el comando (join nombre tu_id codigo_partida)\nPodéis obtener vuestro id de este bot: https://web.telegram.org/#/im?p=@userinfobot\nEjemplo de uso: join antonio 34124134 123 "
-                    )
                     correcto = False
 
 def jugadorexiste(bot,update,partida):
@@ -209,7 +205,7 @@ def start(bot, update):
     logger.info('He recibido un comando start')
     bot.send_message(
         chat_id= update.message.chat_id,
-        text="Bienvenid@ al juego del Kiriki. Use el comando (crearpartida) para crear una nueva partida."
+        text="Bienvenid@ al juego del Kiriki. Use el comando /ayuda para que sepas como jugar."
     )
 
 #Método para tirar dados. Deberás indicar tu nombre y el número de la partida
@@ -499,6 +495,10 @@ def mispartidas(bot,update,args):
         for e in range(len(partidas[i].jugadores)):
             if partidas[i].jugadores[e].nombre == args[0]:
                 bot.send_message(chat_id=update.message.chat_id, text=partidas[i].codigo+"\n.")
+def ayuda(bot,update):
+    bot.send_message(chat_id=update.message.chat_id, text="PASOS PARA JUGAR: \n1: Crea una partida con /crearpartida\n2: Id uniéndose con /join codigo_partida\n3: Cuando estéis todos, que el primero en unirse use el comando /tirardados\n4: El siguiente jugador, si se cree la tirada, volverá a /tirardados . Si piensa que es mentira, usará /levantar")
+    bot.send_message(chat_id=update.message.chat_id, text="Comandos extra:\n /mostrarpuntos - Muestra la puntuación de los que están jugando.\n /valores - Pequeña guía de los dados")
+
 
 def valores(bot,update):
     bot.send_photo(chat_id=update.message.chat_id, photo=open('valores.png', 'rb'))
@@ -523,6 +523,7 @@ if __name__ == '__main__':
     updaterTelegram.dispatcher.add_handler(CommandHandler('mispartidas', mispartidas, pass_args=True))
     #updaterTelegram.dispatcher.add_handler(CommandHandler('pasar', pasar, pass_args=True))
     updaterTelegram.dispatcher.add_handler(CommandHandler('levantar', levantar))
+    updaterTelegram.dispatcher.add_handler(CommandHandler('ayuda', ayuda))
     #updaterTelegram.dispatcher.add_handler(CallbackQueryHandler(jugada2, pattern='jugada'))
     updaterTelegram.dispatcher.add_handler(CallbackQueryHandler(tirardados2))
 
